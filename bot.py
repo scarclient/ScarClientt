@@ -230,14 +230,15 @@ async def cmd_manual_sync(ctx):
 
 @bot.event
 async def on_ready():
+    # Limpiar comandos duplicados de servidores locales para dejar solo los globales limpios
     for guild in bot.guilds:
         try:
-            tree.copy_global_to(guild=guild)
+            tree.clear_commands(guild=guild)
             await tree.sync(guild=guild)
         except Exception as e:
-            print(f"Error syncing guild {guild.id}: {e}")
+            pass
     await tree.sync()
-    print(f"✅ Scar Bot online como {bot.user} | {len(tree.get_commands())} comandos sincronizados")
+    print(f"✅ Scar Bot online como {bot.user} | {len(tree.get_commands())} comandos listos sin duplicados")
 
 if __name__ == "__main__":
     bot.run(TOKEN)
