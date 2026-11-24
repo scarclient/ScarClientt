@@ -42,6 +42,17 @@ def init_db():
 
 init_db()
 
+@app.on_event("startup")
+async def start_discord_bot():
+    import asyncio
+    try:
+        from bot import bot, TOKEN
+        if TOKEN and TOKEN != "none":
+            asyncio.create_task(bot.start(TOKEN))
+            print("Discord bot task started!")
+    except Exception as e:
+        print("Failed to start Discord bot:", e)
+
 # ---------------------------------------------------------------------------
 # Auth middleware (admin token check)
 # ---------------------------------------------------------------------------
