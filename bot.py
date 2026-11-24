@@ -20,6 +20,7 @@ from discord.ext import commands
 import aiohttp
 import os
 from typing import Optional
+from datetime import datetime, timedelta
 
 # --- Config ---
 TOKEN        = os.environ.get("DISCORD_TOKEN", "")
@@ -29,7 +30,6 @@ ADMIN_ROLE   = os.environ.get("ADMIN_ROLE_NAME", "Scar Admin")
 
 # --- Bot setup ---
 intents = discord.Intents.default()
-intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
@@ -47,46 +47,83 @@ def has_admin_role(interaction: discord.Interaction) -> bool:
         return True
     return any(r.name == ADMIN_ROLE for r in interaction.user.roles)
 
+def parse_duration(dur: Optional[str]) -> Optional[str]:
+    if not dur:
+        return None
+    dur = dur.strip().lower()
+    if dur in ["perm", "permanente", "lifetime", "infinito", "none", "0"]:
+        return None
+    
+    now = datetime.utcnow()
+    try:
+        if dur.endswith("d"):
+            days = int(dur[:-1])
+            return (now + timedelta(days=days)).isoformat()
+        elif dur.endswith("h"):
+            hours = int(dur[:-1])
+            return (now + timedelta(hours=hours)).isoformat()
+        elif dur.endswith("m"):
+            months = int(dur[:-1])
+            return (now + timedelta(days=months * 30)).isoformat()
+        elif dur.isdigit():
+            days = int(dur)
+            return (now + timedelta(days=days)).isoformat()
+    except Exception:
+        pass
+    return None
+
 # ---------------------------------------------------------------------------
 # /whitelist
 # ---------------------------------------------------------------------------
-@tree.command(name="whitelist", description="Add or re-whitelist a user by HWID")
+@tree.command(name="whitelist", description="Dar acceso a un usuario por HWID")
 @app_commands.describe(
-    hwid="Hardware ID of the user (they can see it in the injector)",
-    discord_id="Discord user ID (optional)",
-    username="Username label (optional)",
-    expires="Expiry date ISO format: 2025-12-31T23:59:59 (optional, leave blank = never)"
+    hwid="HWID del usuario (el inyector se lo copia automáticamente al portapapeles)",
+    duracion="Ej: 5d (5 días), 30d (30 días), 12h, permanente (vacío = permanente)",
+    usuario="Nombre o tag de la persona (ej: @Juan)"
 )
 async def cmd_whitelist(
     interaction: discord.Interaction,
     hwid: str,
-    discord_id: Optional[str] = None,
-    username: Optional[str] = None,
-    expires: Optional[str] = None
+    duracion: Optional[str] = None,
+    usuario: Optional[str] = None
 ):
     if not has_admin_role(interaction):
         await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
+    clean_hwid = hwid.strip()
+    expires_iso = parse_duration(duracion)
+    dur_label = duracion if duracion else "Permanente (Sin límite)"
+    if expires_iso:
+        dur_label += f" (Expira: {expires_iso[:10]})"
+
     async with aiohttp.ClientSession() as session:
-        # Try add first, if exists → patch to re-whitelist
-        payload = {"hwid": hwid, "discord_id": discord_id, "username": username, "expires_at": expires}
+        payload = {"hwid": clean_hwid, "username": usuario, "expires_at": expires_iso}
         async with session.post(f"{API_URL}/admin/users", json=payload, headers=admin_headers()) as r:
             if r.status == 200:
-                await interaction.followup.send(f"✅ **{username or hwid}** agregado y whitelisted.", ephemeral=True)
+                embed = discord.Embed(title="🛡️ Licencia Scar Client Activada", color=0x9b59b6)
+                embed.add_field(name="Usuario", value=usuario or "Sin nombre", inline=True)
+                embed.add_field(name="Duración", value=dur_label, inline=True)
+                embed.add_field(name="HWID", value=f"`{clean_hwid[:28]}...`", inline=False)
+                embed.set_footer(text="Scar Client Authentication System")
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             data = await r.json()
             if data.get("detail") == "HWID already exists":
-                # Re-whitelist
                 patch = {"whitelisted": True}
-                if username: patch["username"] = username
-                if expires: patch["expires_at"] = expires
-                async with session.patch(f"{API_URL}/admin/users/{hwid}", json=patch, headers=admin_headers()) as r2:
+                if usuario: patch["username"] = usuario
+                patch["expires_at"] = expires_iso
+                async with session.patch(f"{API_URL}/admin/users/{clean_hwid}", json=patch, headers=admin_headers()) as r2:
                     if r2.status == 200:
-                        await interaction.followup.send(f"✅ **{username or hwid}** re-whitelisted.", ephemeral=True)
+                        embed = discord.Embed(title="🔄 Licencia Scar Client Renovada", color=0x2ecc71)
+                        embed.add_field(name="Usuario", value=usuario or "Sin nombre", inline=True)
+                        embed.add_field(name="Nueva Duración", value=dur_label, inline=True)
+                        embed.add_field(name="HWID", value=f"`{clean_hwid[:28]}...`", inline=False)
+                        embed.set_footer(text="Scar Client Authentication System")
+                        await interaction.followup.send(embed=embed, ephemeral=True)
                     else:
-                        await interaction.followup.send(f"❌ Error al actualizar.", ephemeral=True)
+                        await interaction.followup.send(f"❌ Error al renovar usuario.", ephemeral=True)
             else:
                 await interaction.followup.send(f"❌ Error: {data}", ephemeral=True)
 
@@ -182,10 +219,23 @@ async def cmd_list(interaction: discord.Interaction):
     await interaction.followup.send("\n".join(lines), ephemeral=True)
 
 # ---------------------------------------------------------------------------
-# Bot ready
+# Bot ready & Instant Guild Sync
 # ---------------------------------------------------------------------------
+@bot.command(name="sync")
+@commands.has_permissions(administrator=True)
+async def cmd_manual_sync(ctx):
+    tree.copy_global_to(guild=ctx.guild)
+    synced = await tree.sync(guild=ctx.guild)
+    await ctx.send(f"✅ {len(synced)} comandos sincronizados instantáneamente en este servidor!")
+
 @bot.event
 async def on_ready():
+    for guild in bot.guilds:
+        try:
+            tree.copy_global_to(guild=guild)
+            await tree.sync(guild=guild)
+        except Exception as e:
+            print(f"Error syncing guild {guild.id}: {e}")
     await tree.sync()
     print(f"✅ Scar Bot online como {bot.user} | {len(tree.get_commands())} comandos sincronizados")
 
