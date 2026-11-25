@@ -91,7 +91,7 @@ async def cmd_whitelist(
         await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)
     clean_hwid = hwid.strip()
     expires_iso = parse_duration(duracion)
     dur_label = duracion if duracion else "Permanente (Sin límite)"
@@ -107,7 +107,7 @@ async def cmd_whitelist(
                 embed.add_field(name="Duración", value=dur_label, inline=True)
                 embed.add_field(name="HWID", value=f"`{clean_hwid[:28]}...`", inline=False)
                 embed.set_footer(text="Scar Client Authentication System")
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await interaction.followup.send(embed=embed, ephemeral=False)
                 return
             data = await r.json()
             if data.get("detail") == "HWID already exists":
@@ -121,11 +121,11 @@ async def cmd_whitelist(
                         embed.add_field(name="Nueva Duración", value=dur_label, inline=True)
                         embed.add_field(name="HWID", value=f"`{clean_hwid[:28]}...`", inline=False)
                         embed.set_footer(text="Scar Client Authentication System")
-                        await interaction.followup.send(embed=embed, ephemeral=True)
+                        await interaction.followup.send(embed=embed, ephemeral=False)
                     else:
-                        await interaction.followup.send(f"❌ Error al renovar usuario.", ephemeral=True)
+                        await interaction.followup.send(f"❌ Error al renovar usuario.", ephemeral=False)
             else:
-                await interaction.followup.send(f"❌ Error: {data}", ephemeral=True)
+                await interaction.followup.send(f"❌ Error: {data}", ephemeral=False)
 
 # ---------------------------------------------------------------------------
 # /unwhitelist
@@ -137,7 +137,7 @@ async def cmd_unwhitelist(interaction: discord.Interaction, hwid: str):
         await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)
     async with aiohttp.ClientSession() as session:
         async with session.patch(
             f"{API_URL}/admin/users/{hwid}",
@@ -145,9 +145,9 @@ async def cmd_unwhitelist(interaction: discord.Interaction, hwid: str):
             headers=admin_headers()
         ) as r:
             if r.status == 200:
-                await interaction.followup.send(f"🚫 Acceso revocado para `{hwid}`.", ephemeral=True)
+                await interaction.followup.send(f"🚫 Acceso revocado para `{hwid}`.", ephemeral=False)
             else:
-                await interaction.followup.send(f"❌ No encontrado o error.", ephemeral=True)
+                await interaction.followup.send(f"❌ No encontrado o error.", ephemeral=False)
 
 # ---------------------------------------------------------------------------
 # /check
@@ -159,13 +159,13 @@ async def cmd_check(interaction: discord.Interaction, hwid: str):
         await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)
     async with aiohttp.ClientSession() as session:
         async with session.post(f"{API_URL}/check", json={"hwid": hwid}) as r:
             data = await r.json()
             status = "✅ PERMITIDO" if data.get("allowed") else "❌ BLOQUEADO"
             reason = data.get("reason", "")
-            await interaction.followup.send(f"**{status}**\n`{hwid}`\n> {reason}", ephemeral=True)
+            await interaction.followup.send(f"**{status}**\n`{hwid}`\n> {reason}", ephemeral=False)
 
 # ---------------------------------------------------------------------------
 # /delete_hwid
@@ -177,13 +177,13 @@ async def cmd_delete(interaction: discord.Interaction, hwid: str):
         await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)
     async with aiohttp.ClientSession() as session:
         async with session.delete(f"{API_URL}/admin/users/{hwid}", headers=admin_headers()) as r:
             if r.status == 200:
-                await interaction.followup.send(f"🗑️ HWID `{hwid}` eliminado.", ephemeral=True)
+                await interaction.followup.send(f"🗑️ HWID `{hwid}` eliminado.", ephemeral=False)
             else:
-                await interaction.followup.send(f"❌ No encontrado.", ephemeral=True)
+                await interaction.followup.send(f"❌ No encontrado.", ephemeral=False)
 
 # ---------------------------------------------------------------------------
 # /list
@@ -194,13 +194,13 @@ async def cmd_list(interaction: discord.Interaction):
         await interaction.response.send_message("❌ No tienes permisos.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)
     async with aiohttp.ClientSession() as session:
         async with session.get(f"{API_URL}/admin/users", headers=admin_headers()) as r:
             users = await r.json()
 
     if not users:
-        await interaction.followup.send("📋 No hay usuarios registrados.", ephemeral=True)
+        await interaction.followup.send("📋 No hay usuarios registrados.", ephemeral=False)
         return
 
     lines = ["```"]
@@ -216,7 +216,7 @@ async def cmd_list(interaction: discord.Interaction):
     if len(users) > 20:
         lines.append(f"*...y {len(users)-20} más*")
 
-    await interaction.followup.send("\n".join(lines), ephemeral=True)
+    await interaction.followup.send("\n".join(lines), ephemeral=False)
 
 # ---------------------------------------------------------------------------
 # Bot ready & Instant Guild Sync
